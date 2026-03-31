@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CCP Traffic: INTEGRATED AI COMMAND UNIT</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #0b0c10; color: #fff; margin:0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        header { background: #161b22; padding: 12px 30px; border-bottom: 3px solid #66fcf1; display: flex; justify-content: space-between; align-items: center; z-index: 1000; box-shadow: 0 4px 20px rgba(0,0,0,0.6);}
+        
+        main { display: flex; flex: 1; overflow: hidden; padding: 15px; gap: 15px; background: #0b0c10;}
+        .split-pane { flex: 1; display: flex; flex-direction: column; background: #1f2833; border-radius: 12px; border: 1px solid #45a29e; overflow: hidden; position: relative;}
+        .pane-title { background: #1f1f1f; padding: 12px 20px; font-weight: bold; color: #66fcf1; border-bottom: 2px solid #000; letter-spacing: 1px; }
+        
+        #map { flex: 1; width: 100%; height: 100%; background: #000; }
+        .video-container { flex: 1; display: flex; align-items: center; justify-content: center; background: #000; position: relative; }
+        #live-video { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+        /* UNIFIED OVERLAYS */
+        .overlay-stats { position: absolute; bottom: 20px; right: 20px; background: rgba(11,12,16,0.9); padding: 15px; border-radius: 10px; border: 2px solid #66fcf1; display: flex; flex-direction: column; gap: 10px; z-index: 2000; }
+        .stat-row { display: flex; justify-content: space-between; gap: 30px; min-width: 180px; border-bottom: 1px solid #30363d; padding-bottom: 5px;}
+        .alert-toast { background: #d93025; color: white; padding: 12px 25px; border-radius: 8px; font-weight: bold; margin-bottom: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); animation: shake 0.5s; display: none; }
+        
+        @keyframes shake { 0%, 100% {transform: translateX(0);} 25% {transform: translateX(-5px);} 75% {transform: translateX(5px);} }
+
+        #alert-hub { position: absolute; top: 100px; left: 50%; transform: translateX(-50%); z-index: 5000; display: flex; flex-direction: column; align-items: center;}
+        
+        .detect-panel { position: absolute; top: 20px; left: 20px; width: 320px; background: white; color: #333; padding: 25px; border-radius: 12px; z-index: 2000; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+        .detect-input { border: 1px solid #dadce0; border-radius: 8px; padding: 14px; font-size: 0.95em; outline: none; width: 100%; box-sizing: border-box; margin-bottom: 15px;}
+        .detect-btn { width: 100%; background: #1a73e8; color: white; border: none; padding: 14px; border-radius: 8px; font-weight: bold; cursor: pointer; text-transform: uppercase;}
+    </style>
+</head>
+<body>
+    <header>
+        <div style="display: flex; gap: 15px; align-items: center;">
+            <div style="font-size: 2.2em;">🛸</div>
+            <h1 style="margin:0; font-size: 1.5em; color: #66fcf1;">TRAFFIC SURVEILLANCE & NAVIGATION HUB</h1>
+        </div>
+        <div style="text-align: right;">
+            <span style="color: #45a29e; font-size: 0.8em; text-transform: uppercase;">Command Unit Status</span><br>
+            <b style="color: #66fcf1;">CONNECTED</b>
+        </div>
+    </header>
+
+    <main>
+        <!-- LEFT: YOLO PERSPECTIVE -->
+        <div class="split-pane">
+            <div class="pane-title">📹 AI VISION STREAM (YOLO-INTEGRATED)</div>
+            <div class="video-container">
+                <img id="live-video" src="{{ url_for('video_feed') }}">
+            </div>
+        </div>
+
+        <!-- RIGHT: NAVIGATION & ALERT OVERLAY -->
+        <div class="split-pane">
+            <div id="alert-hub"></div>
+            
+            <div class="detect-panel">
+                <input type="text" id="start-node" class="detect-input" value="Kathipara, Chennai">
+                <input type="text" id="end-node" class="detect-input" value="Saidapet, Chennai">
+                <button class="detect-btn" onclick="triggerSearch()">DETECT DIGITAL ROUTE</button>
+            </div>
+
+            <div id="map"></div>
+
+            <div class="overlay-stats">
+                <div class="stat-row"><span>VEHICLE COUNT:</span> <b id="ui-count" style="color: #66fcf1;">0</b></div>
+                <div class="stat-row"><span>TRAFFIC LEVEL:</span> <b id="ui-level" style="color: #66fcf1;">LOW</b></div>
+                <div class="stat-row"><span>NAV DELAY:</span> <b id="ui-delay" style="color: #66fcf1;">4 min</b></div>
+            </div>
+        </div>
+    </main>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const map = L.map('map', { center: [13.0180, 80.2223], zoom: 14, zoomControl: false });
+        L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}').addTo(map);
+
+        const objLayer = L.layerGroup().addTo(map);
+        let livePath = null;
+
+        async function triggerSearch() {
+            const get = (a) => fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(a)}, Chennai`).then(r=>r.json());
+            const dS = await get(document.getElementById('start-node').value);
+            const dE = await get(document.getElementById('end-node').value);
+            if (dS[0] && dE[0]) renderMap([dS[0].lat, dS[0].lon], [dE[0].lat, dE[0].lon]);
+        }
+
+        async function renderMap(s, e) {
+            try {
+                const url = `https://router.project-osrm.org/route/v1/driving/${s[1]},${s[0]};${e[1]},${e[0]}?overview=full&geometries=geojson`;
+                const d = await (await fetch(url)).json();
+                const cords = d.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+
+                objLayer.clearLayers();
+                L.polyline(cords, { color: 'white', weight: 16, opacity: 0.4, lineCap: 'round' }).addTo(objLayer);
+                const mid = Math.floor(cords.length / 2);
+                
+                // Segments
+                const SegLen = cords.length;
+                L.polyline(cords.slice(0, Math.floor(SegLen*0.3)), { color: '#2ecc71', weight: 12 }).addTo(objLayer);
+                L.polyline(cords.slice(Math.floor(SegLen*0.7)), { color: '#2ecc71', weight: 12 }).addTo(objLayer);
+                livePath = L.polyline(cords.slice(Math.floor(SegLen*0.3), Math.floor(SegLen*0.7)), { color: '#2ecc71', weight: 12 }).addTo(objLayer);
+
+                // Protocol Markers
+                L.circleMarker(cords[0], { radius: 8, color: '#1a73e8', weighting: 3, fillOpacity: 1 }).addTo(objLayer);
+                L.circleMarker(cords[cords.length-1], { radius: 8, color: '#000', weighting: 3, fillOpacity: 1 }).addTo(objLayer);
+
+                map.fitBounds(coords, { padding: [100, 100] });
+            } catch(e) {}
+        }
+
+        async function sync() {
+            try {
+                const r = await fetch('/api/status');
+                const d = await r.json();
+                const s = d["Guindy Road"];
+                
+                document.getElementById('ui-level').innerText = s.level;
+                document.getElementById('ui-count').innerText = s.vehicle_count;
+                
+                // Update Path Color
+                let col = "#2ecc71"; let delay = "4 min";
+                if(s.level === "MEDIUM") { col="#f1c40f"; delay="12 min"; }
+                else if(s.level === "HIGH") { col="#e74c3c"; delay="22 min"; }
+                
+                if(livePath) livePath.setStyle({ color: col, weight: (s.level === "HIGH" ? 18 : 12) });
+                document.getElementById('ui-delay').innerText = delay;
+
+                // Handle Alerts
+                const hub = document.getElementById('alert-hub');
+                hub.innerHTML = '';
+                s.alerts.forEach(msg => {
+                    const row = document.createElement('div');
+                    row.className = 'alert-toast';
+                    row.style.display = 'block';
+                    row.innerText = msg;
+                    hub.appendChild(row);
+                });
+
+            } catch(e) {}
+        }
+
+        triggerSearch().then(() => setInterval(sync, 1500));
+    </script>
+</body>
+</html>

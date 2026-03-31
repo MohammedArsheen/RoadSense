@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.idea/
+.vscode/
+.gemini/
+
+# Large Model Files
+# yolov8n.pt
+
+# Video/Output Data
+output/
+data/*.mp4
+data/*.avi
+data/*.mkv
